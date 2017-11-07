@@ -1,0 +1,22 @@
+#who cares about header files
+*.h
+
+#also most .png files
+*.png
+
+#except the important ones
+!Overworld.png
+!OverworldHitboxes.png
+!character.png
+
+#some misc to keep out
+Debug/
+*.ico
+*.zip
+
+#and anything with "Zelda1" in it
+Zelda1.*
+#and most .cpp files
+*.cpp
+#except the all-important one
+!Zelda1.cpp
