@@ -8,6 +8,7 @@
 #include <ObjIdl.h>
 #include <gdiplus.h>
 #pragma comment (lib,"Gdiplus.lib")
+#define DEBUG true
 HINSTANCE hInst;
 WCHAR szTitle[100];
 WCHAR szWindowClass[100];
@@ -69,19 +70,18 @@ typedef std::wstring string;
 typedef std::vector<int> layer;
 typedef std::vector<layer> map;
 typedef std::unordered_set<int> set;
-typedef std::map<int, layer> group;
-typedef std::map<int, Gdiplus::Bitmap*> spritesheet; //TODO
+typedef std::map<int, Gdiplus::Bitmap*> spritesheet;
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
 	static double playerx;
 	static double playery;
 	static bool direction[4];
 	static Gdiplus::Bitmap* output;
-	static Gdiplus::Bitmap* sprite[40 * 36];
-	static Gdiplus::Bitmap* charsprite[4 * 4];
+	static spritesheet sprite;
+	static spritesheet charsprite;
 	static Gdiplus::Bitmap* overworld;
+	static Gdiplus::Bitmap* hitboxmap;
 	static map intmap;
-	static group hitbox;
     switch (message)
     {
 	case WM_CREATE:
@@ -96,7 +96,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 				delete(characterSpritesheet); //done loading sprites => don't need source bitmap anymore
 			} //done character sprite loading
 			
-			set loadsprites;
 			int mapwidth;
 			int mapheight;
 			{ //parse the tmx file
@@ -142,46 +141,48 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 			} //done parsing the tmx file
 
 			//check which sprites we need to load
+			set loadsprites;
 			for (map::iterator m = intmap.begin(); m != intmap.end(); ++m)
 				for (layer::iterator l = m->begin(); l != m->end(); ++l)
-					if (!loadsprites.count(--*l))
+					if (!loadsprites.count(--(*l)))
 						loadsprites.insert(*l);
 
-			//load the hitbox sprites
-			Gdiplus::Bitmap* hitboxes[40 * 36];
-			Gdiplus::Bitmap* OverworldHitboxSpritesheet = Gdiplus::Bitmap::FromFile(L"OverworldHitboxes.png");
-			for (set::iterator i = loadsprites.begin(); i != loadsprites.end(); ++i)
-				if (*i != -1) if (!hitboxes[*i])
-					hitboxes[*i] = OverworldHitboxSpritesheet->Clone(*i % 40 * 16, *i / 40 * 16, 16, 16, PixelFormatDontCare);
-			delete(OverworldHitboxSpritesheet);
-			for (int i = 0; i < 40 * 36; ++i)
-				if (hitboxes[i]) {
-					hitbox[i] = layer();
-					Gdiplus::Color c;
-					for (int x = 0; x < 16; ++x)
-						for (int y = 0; y < 16; ++y) {
-							hitboxes[i]->GetPixel(x, y, &c);
-							hitbox[i].push_back(int(c.GetA > 0));
-						}
-				}
-
 			//load the sprites we need
-			Gdiplus::Bitmap* OverworldSpritesheet = Gdiplus::Bitmap::FromFile(L"Overworld.png"); //load the spritesheet for the overworld sprites
+			Gdiplus::Bitmap* Spritesheet = Gdiplus::Bitmap::FromFile(L"Overworld.png"); //load the spritesheet for the overworld sprites
 			for (set::iterator i = loadsprites.begin(); i != loadsprites.end(); ++i)
-				if (*i != -1) if (!sprite[*i])
-					sprite[*i] = OverworldSpritesheet->Clone(*i % 40 * 16, *i / 40 * 16, 16, 16, PixelFormatDontCare);
-			delete(OverworldSpritesheet); //done loading sprites => don't need source bitmap anymore
+				if (*i != -1) if (!sprite.count(*i))
+					sprite[*i] = Spritesheet->Clone(*i % 40 * 16, *i / 40 * 16, 16, 16, PixelFormatDontCare);
+			delete(Spritesheet); //done loading sprites => don't need source bitmap anymore
+			
+			//load the hitbox sprites
+			spritesheet hitboxsprite;
+			Spritesheet = Gdiplus::Bitmap::FromFile(L"OverworldHitboxes.png");
+			for (set::iterator i = loadsprites.begin(); i != loadsprites.end(); ++i)
+				if ((*i) != -1) if (!hitboxsprite.count(*i))
+					hitboxsprite[*i] = Spritesheet->Clone(*i % 40 * 16, *i / 40 * 16, 16, 16, PixelFormatDontCare);
+			delete(Spritesheet);
 
 			//draw overworld
 			overworld = new Gdiplus::Bitmap(mapwidth * 16, mapheight * 16); //initialize overworld (may need to be changed to "map" or something similar)
 			Gdiplus::Graphics* g = Gdiplus::Graphics::FromImage(overworld); //get ready to draw the overworld
-			for (int z = 0; z < int(2); ++z)
-				for (int x = 0; x < mapwidth; ++x)
-					for (int y = 0; y < mapheight; ++y)
-						if (intmap[z][x + y * mapwidth] != -1)
-							g->DrawImage(sprite[intmap[z][x + y * mapwidth]], x * 21, y * 21);
+			for (map::iterator z = intmap.begin(); z != intmap.end(); ++z) //for each layer
+				for (int x = 0; x < mapwidth; ++x) //go thru x
+					for (int y = 0; y < mapheight; ++y) //go thru y
+						if ((*z)[x + y * mapwidth] != -1) //ignore empty map locations
+							g->DrawImage(sprite[(*z)[x + y * mapwidth]], x * 21, y * 21); //draw to overworld
 			delete(g); //done drawing the overworld
 
+			//draw hitboxmap
+			hitboxmap = new Gdiplus::Bitmap(mapwidth * 16, mapheight * 16); //initialize the bitmap
+			g = Gdiplus::Graphics::FromImage(hitboxmap); //get ready to draw to the bitmap
+			for (map::iterator z = intmap.begin(); z != intmap.end(); ++z) //for each layer
+				for (int x = 0; x < mapwidth; ++x) //go thru x
+					for (int y = 0; y < mapheight; ++y) //go thru y
+						if ((*z)[x + y * mapwidth] != -1) //ignore empty map locations
+							g->DrawImage(hitboxsprite[(*z)[x + y * mapwidth]], x * 21, y * 21); //draw to hitboxmap
+			delete(g); //done drawing to the hitbox bitmap
+
+			//some misc window setup options
 			SetTimer(hWnd, 0, 20, TIMERPROC(NULL)); //T=20; 60fps would be T=16.66666
 			DeleteMenu(GetMenu(hWnd), 1, MF_BYPOSITION);
 		}
@@ -196,52 +197,29 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 			if (direction[3]) --dy;
 
 			bool movement = true;
-			for (map::iterator layer = intmap.begin(); layer != intmap.end() && movement; ++layer) { //need to check every layer for hitboxes :(
-				double targetx = playerx + (dx && dy) ? (0.709 * 2.0 * double(dx)) : (2.0 * double(dx));
-				double targety = playery + (dx && dy) ? (0.709 * 2.0 * double(dy)) : (2.0 * double(dy));
-				int tilex = int(targetx);
-				int tiley = int(targety);
-				int pixelx = int(targetx * 16.0) % 16;
-				int pixely = int(targety * 16.0) % 16;
-				for (int x = 0; x < 8 && movement; ++x) for (int y = 0; y < 8 && movement; ++y) { //pixel x, pixel y
-					//figure out if this (upleft) is actually overlapping with our collision box (8x8)
-					//if yes, ask hitbox[] if we have a colliding hitbox
-					//if yes, set movement to false
-				}//upleft
-				if (!movement) break;
-				++tilex;
-				for (int x = 0; x < 8 && movement; ++x) for (int y = 0; y < 8 && movement; ++y) { //pixel x, pixel y
-					//if the target movement location overlaps with a hitbox,
-						//deny the movement
-				}//upright
-				if (!movement) break;
-				--tilex;
-				++tiley;
-				for (int x = 0; x < 8 && movement; ++x) for (int y = 0; y < 8 && movement; ++y) { //pixel x, pixel y
-					//if the target movement location overlaps with a hitbox,
-						//deny the movement
-				}//downleft
-				if (!movement) break;
-				++tilex;
-				for (int x = 0; x < 8 && movement; ++x) for (int y = 0; y < 8 && movement; ++y) { //pixel x, pixel y
-					//if the target movement location overlaps with a hitbox,
-						//deny the movement
-				}//downright
-				if (!movement) break;
-			}
+			double targetx = playerx + (dx && dy) ? (0.709 * 2.0 * double(dx)) : (2.0 * double(dx));
+			double targety = playery + (dx && dy) ? (0.709 * 2.0 * double(dy)) : (2.0 * double(dy));
+			Gdiplus::Color c;
+			for (int x = 0; x < 8 && movement; ++x) for (int y = 0; y < 8 && movement; ++y)
+				if (hitboxmap->GetPixel(int(targetx) + x - 3, int(targety) + y - 3, &c) == Gdiplus::Status::Ok)
+					if (c.GetValue() == Gdiplus::Color::Black)
+						movement = false;
+					else movement;
+				else movement = false;
 			if (movement) {
 				playerx += (dx && dy) ? (0.709 * 2.0 * double(dx)) : (2.0 * double(dx));
 				playery += (dx && dy) ? (0.709 * 2.0 * double(dy)) : (2.0 * double(dy));
 			}
 
 			int charspriteindex = 0;
-			if (dy && !dx) { if (dx > 0) charspriteindex = 4; if (dx < 0) charspriteindex = 12; }
+			if (!dy && dx) { if (dx > 0) charspriteindex = 4; if (dx < 0) charspriteindex = 12; }
 			else { if (dy > 0) charspriteindex = 0; if (dy < 0) charspriteindex = 8; }
 			if (direction[0] || direction[1] || direction[2] || direction[3])
 				charspriteindex += (step / 4) % 4;
 
 			Gdiplus::Graphics* g = Gdiplus::Graphics::FromImage(output); //get ready to draw to our viewing window
 			g->DrawImage(overworld, 128 - int(playerx), 128 - int(playery)); //draw overworld in a different location based on where the player is
+			if (DEBUG) g->DrawImage(hitboxmap, 128 - int(playerx), 128 - int(playery));
 			g->DrawImage(charsprite[charspriteindex], 128 - 7, 128 - 21); //draw the player's character
 			delete(g); //done drawing to the drawing window
 			InvalidateRect(hWnd, nullptr, false); //make sure to redraw
