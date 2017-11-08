@@ -2,7 +2,7 @@
 *.h
 
 #also most .png files
-*.png
+png/
 
 #except the important ones
 !Overworld.png
