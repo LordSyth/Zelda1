@@ -8,7 +8,6 @@
 #include <ObjIdl.h>
 #include <gdiplus.h>
 #pragma comment (lib,"Gdiplus.lib")
-#define DEBUG true
 HINSTANCE hInst;
 WCHAR szTitle[100];
 WCHAR szWindowClass[100];
@@ -77,114 +76,120 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 	static double playery;
 	static bool direction[4];
 	static Gdiplus::Bitmap* output;
-	static spritesheet sprite;
-	static spritesheet charsprite;
-	static Gdiplus::Bitmap* overworld;
-	static Gdiplus::Bitmap* hitboxmap;
 	static map intmap;
+	static layer hit;
+	static spritesheet charsprite;
+	static spritesheet sprite;
+	static Gdiplus::Bitmap* overworld;
+	static int mapwidth;
+	static int mapheight;
     switch (message)
     {
 	case WM_CREATE:
 		{
-			playery = playerx = 512.1; //for now, spawn in center of map
-			direction[0] = direction[1] = direction[2] = direction[3] = false;
-			output = new Gdiplus::Bitmap(256, 256); //initialize output (small viewing window)
-			intmap = map(2, layer()); //perhaps I should add layers to the map as I parse the tmx file. But for now, just this for init
-			{ //character sprite loading
+			//static variable initializing
+			{
+				playery = playerx = 512.1; //for now, spawn in center of map
+				direction[0] = direction[1] = direction[2] = direction[3] = false;
+				output = new Gdiplus::Bitmap(256, 256); //initialize output (small viewing window)
+				intmap = map(2, layer()); //perhaps I should add layers to the map as I parse the tmx file. But for now, just this for init
 				Gdiplus::Bitmap* characterSpritesheet = Gdiplus::Bitmap::FromFile(L"character.png"); //load the spritesheet for the character sprites
 				for (int x = 0; x < 4; ++x) for (int y = 0; y < 4; ++y) charsprite[x + y * 4] = characterSpritesheet->Clone(x * 16, y * 32, 16, 32, PixelFormatDontCare); //load character sprites into an array
 				delete(characterSpritesheet); //done loading sprites => don't need source bitmap anymore
-			} //done character sprite loading
-			
-			int mapwidth;
-			int mapheight;
-			{ //parse the tmx file
-				std::wifstream tmx;
-				tmx.open(L"Map1.tmx");
-				string mapstr;
-				std::getline(tmx, mapstr); //<?xml ...>
-				std::getline(tmx, mapstr); //<map ...>
-				mapwidth = (int(mapstr[int(mapstr.find(L"width")) + 7]) - 0x30);
-				for (int find = int(mapstr.find(L"width")) + 8; mapstr[find] != L'"'; ++find)
-					(mapwidth *= 10) += (int(mapstr[find]) - 0x30);
-				mapheight = (int(mapstr[int(mapstr.find(L"height")) + 8]) - 0x30);
-				for (int find = int(mapstr.find(L"height")) + 9; mapstr[find] != L'"'; ++find)
-					(mapheight *= 10) += (int(mapstr[find]) - 0x30);
-				std::getline(tmx, mapstr); // <tileset .../>
-				std::getline(tmx, mapstr); // <layer ...>
-				std::getline(tmx, mapstr); //  <data ...>
-				std::getline(tmx, mapstr); //first line of data
-				while (mapstr[0] != '<') { //lines of data
-					for (string::iterator i = mapstr.begin(); i != mapstr.end(); ++i) if (*i != L',') {
+			}
+			//parse the tmx file
+			{ //TODO: make it add layers to the intmap as it encounters them in the tmx file
+				std::wifstream tmx(L"Map1.tmx");
+				string nextline;
+				std::getline(tmx, nextline); //<?xml ...>
+				std::getline(tmx, nextline); //<map ...>
+				mapwidth = (int(nextline[int(nextline.find(L"width")) + 7]) - 0x30);
+				for (int find = int(nextline.find(L"width")) + 8; nextline[find] != L'"'; ++find)
+					(mapwidth *= 10) += (int(nextline[find]) - 0x30);
+				mapheight = (int(nextline[int(nextline.find(L"height")) + 8]) - 0x30);
+				for (int find = int(nextline.find(L"height")) + 9; nextline[find] != L'"'; ++find)
+					(mapheight *= 10) += (int(nextline[find]) - 0x30);
+				std::getline(tmx, nextline); // <tileset .../>
+				std::getline(tmx, nextline); // <layer ...>
+				std::getline(tmx, nextline); //  <data ...>
+				std::getline(tmx, nextline); //first line of data
+				while (nextline[0] != '<') { //lines of data
+					for (string::iterator i = nextline.begin(); i != nextline.end(); ++i) if (*i != L',') {
 						intmap[0].push_back(int(*i) - 0x30);
-						for (++i; i != mapstr.end() && *i != L','; ++i)
+						for (++i; i != nextline.end() && *i != L','; ++i)
 							(intmap[0].back() *= 10) += (int(*i) - 0x30);
-						if (i == mapstr.end()) break;
+						if (i == nextline.end()) break;
 					}
-					std::getline(tmx, mapstr);
+					std::getline(tmx, nextline);
 				} //</data>
-				std::getline(tmx, mapstr); // </layer>
-				std::getline(tmx, mapstr); // <layer ...>
-				std::getline(tmx, mapstr); //  <data ...>
-				std::getline(tmx, mapstr); //first line of data
-				while (mapstr[0] != L'<') {
-					for (string::iterator i = mapstr.begin(); i != mapstr.end(); ++i) if (*i != L',') {
+				std::getline(tmx, nextline); // </layer>
+				std::getline(tmx, nextline); // <layer ...>
+				std::getline(tmx, nextline); //  <data ...>
+				std::getline(tmx, nextline); //first line of data
+				while (nextline[0] != L'<') {
+					for (string::iterator i = nextline.begin(); i != nextline.end(); ++i) if (*i != L',') {
 						intmap[1].push_back(int(*i) - 0x30);
-						for (++i; i != mapstr.end() && *i != L','; ++i)
+						for (++i; i != nextline.end() && *i != L','; ++i)
 							(intmap[1].back() *= 10) += (int(*i) - 0x30);
-						if (i == mapstr.end()) break;
+						if (i == nextline.end()) break;
 					}
-					std::getline(tmx, mapstr);
+					std::getline(tmx, nextline);
 				} //</data>
-				std::getline(tmx, mapstr); // </layer>
-				std::getline(tmx, mapstr); //</map>
-			} //done parsing the tmx file
+				std::getline(tmx, nextline); // </layer>
+				std::getline(tmx, nextline); //</map>
+			}
+			//parse the .txt (hitbox) file and draw hit map
+			{
+				std::wifstream txt(L"OverworldHitboxes.txt");
+				string nextline;
+				std::map<int, layer> hitboxtmp;
+				for (int i = 0; i < 40 * 36; ++i) {
+					std::getline(txt, nextline);
+					hitboxtmp[i] = layer();
+					for (string::iterator j = nextline.begin(); j != nextline.end(); ++j)
+						hitboxtmp[i].push_back(*j - 0x30);
+				}
+				hit = layer(mapwidth * 16 * mapheight * 16, 0); //initialize it with map output dimensions
+				for (map::iterator z = intmap.begin(); z != intmap.end(); ++z)
+					for (int tilex = 0; tilex < mapwidth; ++tilex)
+						for (int tiley = 0; tiley < mapheight; ++tiley)
+							if ((*z)[tilex + tiley * mapwidth] != -1)
+								for (int x = 0; x < 16; ++x)
+									for (int y = 0; y < 16; ++y)
+										hit[tilex] = hitboxtmp[(*z)[tilex + tiley * mapwidth]][x + y * mapwidth];
 
-			//check which sprites we need to load
-			set loadsprites;
-			for (map::iterator m = intmap.begin(); m != intmap.end(); ++m)
-				for (layer::iterator l = m->begin(); l != m->end(); ++l)
-					if (!loadsprites.count(--(*l)))
-						loadsprites.insert(*l);
-
-			//load the sprites we need
-			Gdiplus::Bitmap* Spritesheet = Gdiplus::Bitmap::FromFile(L"Overworld.png"); //load the spritesheet for the overworld sprites
-			for (set::iterator i = loadsprites.begin(); i != loadsprites.end(); ++i)
-				if (*i != -1) if (!sprite.count(*i))
-					sprite[*i] = Spritesheet->Clone(*i % 40 * 16, *i / 40 * 16, 16, 16, PixelFormatDontCare);
-			delete(Spritesheet); //done loading sprites => don't need source bitmap anymore
-			
-			//load the hitbox sprites
-			spritesheet hitboxsprite;
-			Spritesheet = Gdiplus::Bitmap::FromFile(L"OverworldHitboxes.png");
-			for (set::iterator i = loadsprites.begin(); i != loadsprites.end(); ++i)
-				if ((*i) != -1) if (!hitboxsprite.count(*i))
-					hitboxsprite[*i] = Spritesheet->Clone(*i % 40 * 16, *i / 40 * 16, 16, 16, PixelFormatDontCare);
-			delete(Spritesheet);
-
+				//for (int y = 0; y < mapheight; ++y) {
+				//	std::getline(txt, nextline);
+				//	for (string::iterator x = nextline.begin(); x != nextline.end(); ++x) {
+				//		hit.push_back(int(*x) - 0x30);
+				//	}
+				//}
+			}
+			//load sprites
+			{
+				Gdiplus::Bitmap* Spritesheet = Gdiplus::Bitmap::FromFile(L"Overworld.png"); //load the spritesheet for the overworld sprites
+				for (map::iterator m = intmap.begin(); m != intmap.end(); ++m)
+					for (layer::iterator l = m->begin(); l != m->end(); ++l)
+						if ((--(*l)) != -1) if (!sprite[*l])
+							sprite[*l] = Spritesheet->Clone(*l % 40 * 16, *l / 40 * 16, 16, 16, PixelFormatDontCare);
+				delete(Spritesheet); //done loading sprites => don't need source bitmap anymore
+			}
 			//draw overworld
-			overworld = new Gdiplus::Bitmap(mapwidth * 16, mapheight * 16); //initialize overworld (may need to be changed to "map" or something similar)
-			Gdiplus::Graphics* g = Gdiplus::Graphics::FromImage(overworld); //get ready to draw the overworld
-			for (map::iterator z = intmap.begin(); z != intmap.end(); ++z) //for each layer
-				for (int x = 0; x < mapwidth; ++x) //go thru x
-					for (int y = 0; y < mapheight; ++y) //go thru y
-						if ((*z)[x + y * mapwidth] != -1) //ignore empty map locations
-							g->DrawImage(sprite[(*z)[x + y * mapwidth]], x * 21, y * 21); //draw to overworld
-			delete(g); //done drawing the overworld
-
-			//draw hitboxmap
-			hitboxmap = new Gdiplus::Bitmap(mapwidth * 16, mapheight * 16); //initialize the bitmap
-			g = Gdiplus::Graphics::FromImage(hitboxmap); //get ready to draw to the bitmap
-			for (map::iterator z = intmap.begin(); z != intmap.end(); ++z) //for each layer
-				for (int x = 0; x < mapwidth; ++x) //go thru x
-					for (int y = 0; y < mapheight; ++y) //go thru y
-						if ((*z)[x + y * mapwidth] != -1) //ignore empty map locations
-							g->DrawImage(hitboxsprite[(*z)[x + y * mapwidth]], x * 21, y * 21); //draw to hitboxmap
-			delete(g); //done drawing to the hitbox bitmap
-
+			{
+				overworld = new Gdiplus::Bitmap(mapwidth * 16, mapheight * 16); //initialize overworld (may need to be changed to "map" or something similar)
+				Gdiplus::Graphics* g = Gdiplus::Graphics::FromImage(overworld); //get ready to draw the overworld
+				for (map::iterator z = intmap.begin(); z != intmap.end(); ++z) //for each layer
+					for (int x = 0; x < mapwidth; ++x) //go thru x
+						for (int y = 0; y < mapheight; ++y) //go thru y
+							if ((*z)[x + y * mapwidth] != -1) //ignore empty map locations
+								g->DrawImage(sprite[(*z)[x + y * mapwidth]], x * 21, y * 21); //draw to overworld
+				delete(g); //done drawing the overworld
+			}
 			//some misc window setup options
-			SetTimer(hWnd, 0, 20, TIMERPROC(NULL)); //T=20; 60fps would be T=16.66666
-			DeleteMenu(GetMenu(hWnd), 1, MF_BYPOSITION);
+			{
+				SetTimer(hWnd, 0, 20, TIMERPROC(NULL)); //T=20; 60fps would be T=16.66666
+				DeleteMenu(GetMenu(hWnd), 1, MF_BYPOSITION);
+			}
 		}
 		break;
 	case WM_TIMER:
@@ -200,12 +205,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 			double targetx = playerx + (dx && dy) ? (0.709 * 2.0 * double(dx)) : (2.0 * double(dx));
 			double targety = playery + (dx && dy) ? (0.709 * 2.0 * double(dy)) : (2.0 * double(dy));
 			Gdiplus::Color c;
-			for (int x = 0; x < 8 && movement; ++x) for (int y = 0; y < 8 && movement; ++y)
-				if (hitboxmap->GetPixel(int(targetx) + x - 3, int(targety) + y - 3, &c) == Gdiplus::Status::Ok)
-					if (c.GetValue() == Gdiplus::Color::Black)
-						movement = false;
-					else movement;
-				else movement = false;
+			//for (int x = 0; x < 8 && movement; ++x) for (int y = 0; y < 8 && movement; ++y)
+			//	if ()
+			//		movement = false;
 			if (movement) {
 				playerx += (dx && dy) ? (0.709 * 2.0 * double(dx)) : (2.0 * double(dx));
 				playery += (dx && dy) ? (0.709 * 2.0 * double(dy)) : (2.0 * double(dy));
@@ -219,7 +221,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 
 			Gdiplus::Graphics* g = Gdiplus::Graphics::FromImage(output); //get ready to draw to our viewing window
 			g->DrawImage(overworld, 128 - int(playerx), 128 - int(playery)); //draw overworld in a different location based on where the player is
-			if (DEBUG) g->DrawImage(hitboxmap, 128 - int(playerx), 128 - int(playery));
 			g->DrawImage(charsprite[charspriteindex], 128 - 7, 128 - 21); //draw the player's character
 			delete(g); //done drawing to the drawing window
 			InvalidateRect(hWnd, nullptr, false); //make sure to redraw
@@ -270,7 +271,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 			for (int i = 0; i < 40 * 36; ++i)
 				if (sprite[i]) delete(sprite[i]);
 			for (int i = 0; i < 4 * 4; ++i)
-				delete(charsprite[i]);
+				if (charsprite[i]) delete(charsprite[i]);
 			delete(overworld);
 			PostQuitMessage(0);
 		}

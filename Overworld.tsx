@@ -17,6 +17,7 @@
   <terrain name="Shadow" tile="700"/>
   <terrain name="Marble" tile="496"/>
   <terrain name="Stairs" tile="819"/>
+  <terrain name="Tree" tile="646"/>
  </terraintypes>
  <tile id="0" terrain="0,0,0,0"/>
  <tile id="120" terrain="0,0,0,2"/>
@@ -128,10 +129,19 @@
  <tile id="616" terrain=",13,13,13"/>
  <tile id="617" terrain="11,11,11,"/>
  <tile id="618" terrain="11,11,,11"/>
+ <tile id="642" terrain="15,15,15,15"/>
+ <tile id="643" terrain=",15,15,15"/>
+ <tile id="644" terrain="15,,15,15"/>
+ <tile id="645" terrain=",,,15"/>
+ <tile id="646" terrain=",,15,"/>
+ <tile id="647" terrain=",15,15,"/>
  <tile id="653" terrain="10,10,10,10"/>
  <tile id="654" terrain="10,10,10,10"/>
  <tile id="657" terrain="11,,11,11"/>
  <tile id="658" terrain=",11,11,11"/>
+ <tile id="685" terrain=",15,,"/>
+ <tile id="686" terrain="15,,,"/>
+ <tile id="687" terrain="15,,,15"/>
  <tile id="691" terrain=",,,9"/>
  <tile id="692" terrain=",,9,9"/>
  <tile id="693" terrain=",,9,"/>
@@ -141,6 +151,9 @@
  <tile id="699" terrain=",,,12"/>
  <tile id="700" terrain=",,12,12"/>
  <tile id="701" terrain=",,12,"/>
+ <tile id="725" terrain=",,15,15"/>
+ <tile id="726" terrain=",15,,15"/>
+ <tile id="727" terrain="15,,15,"/>
  <tile id="731" terrain=",9,,9"/>
  <tile id="732" terrain="9,9,9,9"/>
  <tile id="733" terrain="9,,9,"/>
@@ -152,6 +165,9 @@
  <tile id="739" terrain=",12,,12"/>
  <tile id="740" terrain="12,12,12,12"/>
  <tile id="741" terrain="12,,12,"/>
+ <tile id="763" terrain="15,15,,15"/>
+ <tile id="764" terrain="15,15,15,"/>
+ <tile id="765" terrain="15,15,,"/>
  <tile id="771" terrain=",9,,"/>
  <tile id="772" terrain="9,9,,"/>
  <tile id="773" terrain="9,,,"/>
