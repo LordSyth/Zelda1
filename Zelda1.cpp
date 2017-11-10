@@ -89,7 +89,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 		{
 			//static variable initializing
 			{
-				playery = playerx = 512.1; //for now, spawn in center of map
+				playery = playerx = 512.0; //for now, spawn in center of map
 				direction[0] = direction[1] = direction[2] = direction[3] = false;
 				output = new Gdiplus::Bitmap(256, 256); //initialize output (small viewing window)
 				intmap = map(2, layer()); //perhaps I should add layers to the map as I parse the tmx file. But for now, just this for init
@@ -140,14 +140,21 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 			}
 			//parse the .txt (hitbox) file and draw hit map
 			{
+				std::unordered_set<int> load;
+				for (map::iterator m = intmap.begin(); m != intmap.end(); ++m)
+					for (layer::iterator l = m->begin(); l != m->end(); ++l)
+						if ((--(*l)) != -1) if (!load.count(*l))
+							load.insert(*l);
 				std::wifstream txt(L"OverworldHitboxes.txt");
 				string nextline;
 				std::map<int, layer> hitboxtmp;
 				for (int i = 0; i < 40 * 36; ++i) {
 					std::getline(txt, nextline);
-					hitboxtmp[i] = layer();
-					for (string::iterator j = nextline.begin(); j != nextline.end(); ++j)
-						hitboxtmp[i].push_back(*j - 0x30);
+					if (load.count(i)) {
+						hitboxtmp[i] = layer();
+						for (string::iterator j = nextline.begin(); j != nextline.end(); ++j)
+							hitboxtmp[i].push_back(int(*j) - 0x30);
+					}
 				}
 				hit = layer(mapwidth * 16 * mapheight * 16, 0); //initialize it with map output dimensions
 				for (map::iterator z = intmap.begin(); z != intmap.end(); ++z)
@@ -156,21 +163,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 							if ((*z)[tilex + tiley * mapwidth] != -1)
 								for (int x = 0; x < 16; ++x)
 									for (int y = 0; y < 16; ++y)
-										hit[tilex] = hitboxtmp[(*z)[tilex + tiley * mapwidth]][x + y * mapwidth];
-
-				//for (int y = 0; y < mapheight; ++y) {
-				//	std::getline(txt, nextline);
-				//	for (string::iterator x = nextline.begin(); x != nextline.end(); ++x) {
-				//		hit.push_back(int(*x) - 0x30);
-				//	}
-				//}
+										if (hitboxtmp[(*z)[tilex + tiley * mapwidth]][x + y * 16])
+											hit[tilex * 16 + x + (tiley * 16 + y) * mapwidth * 16] = 1;
 			}
 			//load sprites
 			{
 				Gdiplus::Bitmap* Spritesheet = Gdiplus::Bitmap::FromFile(L"Overworld.png"); //load the spritesheet for the overworld sprites
 				for (map::iterator m = intmap.begin(); m != intmap.end(); ++m)
 					for (layer::iterator l = m->begin(); l != m->end(); ++l)
-						if ((--(*l)) != -1) if (!sprite[*l])
+						if (*l != -1) if (!sprite[*l])
 							sprite[*l] = Spritesheet->Clone(*l % 40 * 16, *l / 40 * 16, 16, 16, PixelFormatDontCare);
 				delete(Spritesheet); //done loading sprites => don't need source bitmap anymore
 			}
@@ -200,17 +201,18 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 			if (direction[1]) ++dy;
 			if (direction[2]) --dx;
 			if (direction[3]) --dy;
-
-			bool movement = true;
-			double targetx = playerx + (dx && dy) ? (0.709 * 2.0 * double(dx)) : (2.0 * double(dx));
-			double targety = playery + (dx && dy) ? (0.709 * 2.0 * double(dy)) : (2.0 * double(dy));
-			Gdiplus::Color c;
-			//for (int x = 0; x < 8 && movement; ++x) for (int y = 0; y < 8 && movement; ++y)
-			//	if ()
-			//		movement = false;
-			if (movement) {
-				playerx += (dx && dy) ? (0.709 * 2.0 * double(dx)) : (2.0 * double(dx));
-				playery += (dx && dy) ? (0.709 * 2.0 * double(dy)) : (2.0 * double(dy));
+			if (dx || dy) {
+				bool movement = true;
+				double targetx = playerx + 2.0 * double(dx) * ((dx && dy) ? 0.709 : 1.0);
+				double targety = playery + 2.0 * double(dx) * ((dx && dy) ? 0.709 : 1.0);
+				Gdiplus::Color c;
+				for (int x = 0; x < 8 && movement; ++x) for (int y = 0; y < 8 && movement; ++y)
+					if (hit[int(targetx) + x - 3 + (int(targety) + y - 3) * mapwidth * 16] == 1)
+						movement = false;
+				if (movement) {
+					playerx += 2.0 * double(dx) * ((dx && dy) ? 0.709 : 1.0);
+					playery += 2.0 * double(dx) * ((dx && dy) ? 0.709 : 1.0);
+				}
 			}
 
 			int charspriteindex = 0;
