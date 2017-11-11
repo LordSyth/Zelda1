@@ -258,7 +258,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 				g->DrawImage(overworld, 0, 0);
 				g->DrawImage(charsprite[charspriteindex], int(playerx) - 7, int(playery) - 23);
 				delete(g);
-				output = tmp.Clone(int(playerx) - 128, int(playery) - 128, 256, 256, PixelFormatDontCare);
+				output = tmp.Clone(
+					((int(playerx) - 128) < 0) ? 0 : (((int(playerx) - 128) > (mapwidth * 16 - 256)) ? (mapwidth * 16 - 256) : (int(playerx) - 128)),
+					((int(playery) - 128) < 0) ? 0 : (((int(playery) - 128) > (mapheight * 16 - 256)) ? (mapheight * 16 - 256) : (int(playery) - 128)),
+					256, 256, PixelFormatDontCare);
 				InvalidateRect(hWnd, nullptr, false);
 			}
 		}
