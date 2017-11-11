@@ -82,7 +82,6 @@
  <tile id="451" terrain=",4,4,"/>
  <tile id="452" terrain=",,4,4"/>
  <tile id="453" terrain=",5,5,"/>
- <tile id="454" terrain="13,13,13,13"/>
  <tile id="455" terrain=",,,13"/>
  <tile id="456" terrain=",,13,13"/>
  <tile id="457" terrain=",,13,"/>
@@ -91,7 +90,6 @@
  <tile id="491" terrain="4,,,4"/>
  <tile id="492" terrain="4,4,,"/>
  <tile id="493" terrain="5,,,5"/>
- <tile id="494" terrain="13,13,13,13"/>
  <tile id="495" terrain=",13,,13"/>
  <tile id="496" terrain="13,13,13,13"/>
  <tile id="497" terrain="13,,13,"/>
@@ -123,8 +121,8 @@
  <tile id="578" terrain=",11,,"/>
  <tile id="579" terrain="11,11,,"/>
  <tile id="580" terrain="11,,,"/>
- <tile id="613" terrain="10,10,10,10"/>
- <tile id="614" terrain="10,10,10,10"/>
+ <tile id="613" terrain="11,11,11,11"/>
+ <tile id="614" terrain="11,11,11,11"/>
  <tile id="615" terrain="13,,13,13"/>
  <tile id="616" terrain=",13,13,13"/>
  <tile id="617" terrain="11,11,11,"/>

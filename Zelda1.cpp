@@ -75,6 +75,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 	static double playerx;
 	static double playery;
 	static bool direction[4];
+	static bool ctrl;
 	static Gdiplus::Bitmap* output;
 	static map intmap;
 	static layer hit;
@@ -89,12 +90,32 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 		{
 			//static variable initializing
 			{
-				playery = playerx = 512.0; //for now, spawn in center of map
-				direction[0] = direction[1] = direction[2] = direction[3] = false;
+				std::wifstream save(L"save");
+				if (save.is_open()) {
+					string savestr;
+					std::getline(save, savestr);
+					save.close();
+					playerx = playery = 0.0;
+					string::iterator i;
+					for (i = savestr.begin(); *i != L','; ++i)
+						(playerx *= 10) += (*i - 0x30);
+					for (++i; i != savestr.end(); ++i)
+						(playery *= 10) += (*i - 0x30);
+				}
+				else playery = playerx = 512.0;
+				direction[0] = direction[1] = direction[2] = direction[3] = ctrl = false;
 				output = new Gdiplus::Bitmap(256, 256); //initialize output (small viewing window)
 				intmap = map(2, layer()); //perhaps I should add layers to the map as I parse the tmx file. But for now, just this for init
 				Gdiplus::Bitmap* characterSpritesheet = Gdiplus::Bitmap::FromFile(L"character.png"); //load the spritesheet for the character sprites
-				for (int x = 0; x < 4; ++x) for (int y = 0; y < 4; ++y) charsprite[x + y * 4] = characterSpritesheet->Clone(x * 16, y * 32, 16, 32, PixelFormatDontCare); //load character sprites into an array
+				Gdiplus::Color c;
+				for (int x = 0; x < 4; ++x) for (int y = 0; y < 4; ++y) {
+					//charsprite[x + y * 4] = characterSpritesheet->Clone(x * 16, y * 32, 16, 32, PixelFormatDontCare); //load character sprites into an array
+					charsprite[x + y * 4] = new Gdiplus::Bitmap(16, 32);
+					for (int px = 0; px < 16; ++px) for (int py = 0; py < 32; ++py) {
+						characterSpritesheet->GetPixel(x * 16 + px, y * 32 + py, &c);
+						charsprite[x + y * 4]->SetPixel(px, py, c);
+					}
+				}
 				delete(characterSpritesheet); //done loading sprites => don't need source bitmap anymore
 			}
 			//parse the tmx file
@@ -168,11 +189,19 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 			}
 			//load sprites
 			{
+				Gdiplus::Color c;
 				Gdiplus::Bitmap* Spritesheet = Gdiplus::Bitmap::FromFile(L"Overworld.png"); //load the spritesheet for the overworld sprites
 				for (map::iterator m = intmap.begin(); m != intmap.end(); ++m)
 					for (layer::iterator l = m->begin(); l != m->end(); ++l)
-						if (*l != -1) if (!sprite[*l])
-							sprite[*l] = Spritesheet->Clone(*l % 40 * 16, *l / 40 * 16, 16, 16, PixelFormatDontCare);
+						if (*l != -1) if (!sprite[*l]) {
+							//sprite[*l] = Spritesheet->Clone(*l % 40 * 16, *l / 40 * 16, 16, 16, PixelFormatDontCare);
+							sprite[*l] = new Gdiplus::Bitmap(16, 16);
+							for (int x = 0; x < 16; ++x)
+								for (int y = 0; y < 16; ++y) {
+									Spritesheet->GetPixel(*l % 40 * 16 + x, *l / 40 * 16 + y, &c);
+									sprite[*l]->SetPixel(x, y, c);
+								}
+						}
 				delete(Spritesheet); //done loading sprites => don't need source bitmap anymore
 			}
 			//draw overworld
@@ -183,7 +212,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 					for (int x = 0; x < mapwidth; ++x) //go thru x
 						for (int y = 0; y < mapheight; ++y) //go thru y
 							if ((*z)[x + y * mapwidth] != -1) //ignore empty map locations
-								g->DrawImage(sprite[(*z)[x + y * mapwidth]], x * 21, y * 21); //draw to overworld
+								g->DrawImage(sprite[(*z)[x + y * mapwidth]], x * 16, y * 16); //draw to overworld
 				delete(g); //done drawing the overworld
 			}
 			//some misc window setup options
@@ -197,43 +226,59 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 		{
 			static int step = 0; ++step;
 			int dx = 0, dy = 0;
-			if (direction[0]) ++dx;
-			if (direction[1]) ++dy;
-			if (direction[2]) --dx;
-			if (direction[3]) --dy;
-			if (dx || dy) {
-				bool movement = true;
-				double targetx = playerx + 2.0 * double(dx) * ((dx && dy) ? 0.709 : 1.0);
-				double targety = playery + 2.0 * double(dx) * ((dx && dy) ? 0.709 : 1.0);
-				Gdiplus::Color c;
-				for (int x = 0; x < 8 && movement; ++x) for (int y = 0; y < 8 && movement; ++y)
-					if (hit[int(targetx) + x - 3 + (int(targety) + y - 3) * mapwidth * 16] == 1)
-						movement = false;
-				if (movement) {
-					playerx += 2.0 * double(dx) * ((dx && dy) ? 0.709 : 1.0);
-					playery += 2.0 * double(dx) * ((dx && dy) ? 0.709 : 1.0);
+			//decide movement
+			{
+				if (direction[0]) ++dx;
+				if (direction[1]) ++dy;
+				if (direction[2]) --dx;
+				if (direction[3]) --dy;
+				if (dx || dy) {
+					bool movement = true;
+					double targetx = playerx + 2.0 * double(dx) * ((dx && dy) ? 0.709 : 1.0);
+					double targety = playery + 2.0 * double(dy) * ((dx && dy) ? 0.709 : 1.0);
+					Gdiplus::Color c;
+					for (int x = 0; x < 8 && movement; ++x) for (int y = 0; y < 8 && movement; ++y)
+						if (hit[int(targetx) + x - 3 + (int(targety) + y - 3) * mapwidth * 16] == 1)
+							movement = false;
+					if (movement) {
+						playerx += 2.0 * double(dx) * ((dx && dy) ? 0.709 : 1.0);
+						playery += 2.0 * double(dy) * ((dx && dy) ? 0.709 : 1.0);
+					}
 				}
 			}
-
 			int charspriteindex = 0;
-			if (!dy && dx) { if (dx > 0) charspriteindex = 4; if (dx < 0) charspriteindex = 12; }
-			else { if (dy > 0) charspriteindex = 0; if (dy < 0) charspriteindex = 8; }
-			if (direction[0] || direction[1] || direction[2] || direction[3])
-				charspriteindex += (step / 4) % 4;
-
-			Gdiplus::Graphics* g = Gdiplus::Graphics::FromImage(output); //get ready to draw to our viewing window
-			g->DrawImage(overworld, 128 - int(playerx), 128 - int(playery)); //draw overworld in a different location based on where the player is
-			g->DrawImage(charsprite[charspriteindex], 128 - 7, 128 - 21); //draw the player's character
-			delete(g); //done drawing to the drawing window
-			InvalidateRect(hWnd, nullptr, false); //make sure to redraw
+			//find the correct character sprite to use
+			{
+				if (!dy && dx) { if (dx > 0) charspriteindex = 4; if (dx < 0) charspriteindex = 12; }
+				else { if (dy > 0) charspriteindex = 0; if (dy < 0) charspriteindex = 8; }
+				if (direction[0] || direction[1] || direction[2] || direction[3])
+					charspriteindex += (step / 4) % 4;
+			}
+			//draw
+			{
+				delete(output);
+				Gdiplus::Bitmap tmp(overworld->GetWidth(), overworld->GetHeight());
+				Gdiplus::Graphics* g = Gdiplus::Graphics::FromImage(&tmp);
+				g->DrawImage(overworld, 0, 0);
+				g->DrawImage(charsprite[charspriteindex], int(playerx) - 7, int(playery) - 23);
+				delete(g);
+				output = tmp.Clone(int(playerx) - 128, int(playery) - 128, 256, 256, PixelFormatDontCare);
+				InvalidateRect(hWnd, nullptr, false);
+			}
 		}
 		break;
 	case WM_KEYDOWN:
 		{
 			if (wParam == VK_RIGHT || wParam == 0x44) direction[0] = true;
-			if (wParam == VK_DOWN || wParam == 0x53) direction[1] = true;
+			if (wParam == VK_DOWN || (wParam == 0x53 && !ctrl)) direction[1] = true;
 			if (wParam == VK_LEFT || wParam == 0x41) direction[2] = true;
 			if (wParam == VK_UP || wParam == 0x57) direction[3] = true;
+			if (wParam == VK_CONTROL) ctrl = true;
+			if (wParam == 0x53) if (ctrl) {
+				std::wofstream save(L"save");
+				save << int(playerx) << L',' << int(playery);
+				save.close();
+			}
 		}
 		break;
 	case WM_KEYUP:
@@ -242,6 +287,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 			if (wParam == VK_DOWN || wParam == 0x53) direction[1] = false;
 			if (wParam == VK_LEFT || wParam == 0x41) direction[2] = false;
 			if (wParam == VK_UP || wParam == 0x57) direction[3] = false;
+			if (wParam == VK_CONTROL) ctrl = false;
 		}
 		break;
     case WM_COMMAND:
