@@ -8,6 +8,7 @@
 #include <ObjIdl.h>
 #include <gdiplus.h>
 #pragma comment (lib,"Gdiplus.lib")
+#define IDM_SAVE 200
 HINSTANCE hInst;
 WCHAR szTitle[100];
 WCHAR szWindowClass[100];
@@ -74,6 +75,7 @@ typedef std::map<int, Gdiplus::Bitmap*> spritesheet;
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
 	static double playerx;
 	static double playery;
+	static int step;
 	static bool direction[4];
 	static bool ctrl;
 	static Gdiplus::Bitmap* output;
@@ -103,9 +105,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 						(playery *= 10) += (*i - 0x30);
 				}
 				else playery = playerx = 512.0;
+				step = 0;
 				direction[0] = direction[1] = direction[2] = direction[3] = ctrl = false;
 				output = new Gdiplus::Bitmap(256, 256); //initialize output (small viewing window)
-				intmap = map(2, layer()); //perhaps I should add layers to the map as I parse the tmx file. But for now, just this for init
+				intmap = map(); //I add layers to the map as I parse the tmx file
 				Gdiplus::Bitmap* characterSpritesheet = Gdiplus::Bitmap::FromFile(L"character.png"); //load the spritesheet for the character sprites
 				Gdiplus::Color c;
 				for (int x = 0; x < 4; ++x) for (int y = 0; y < 4; ++y) {
@@ -119,7 +122,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 				delete(characterSpritesheet); //done loading sprites => don't need source bitmap anymore
 			}
 			//parse the tmx file
-			{ //TODO: make it add layers to the intmap as it encounters them in the tmx file
+			{
 				std::wifstream tmx(L"Map1.tmx");
 				string nextline;
 				std::getline(tmx, nextline); //<?xml ...>
@@ -131,33 +134,25 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 				for (int find = int(nextline.find(L"height")) + 9; nextline[find] != L'"'; ++find)
 					(mapheight *= 10) += (int(nextline[find]) - 0x30);
 				std::getline(tmx, nextline); // <tileset .../>
-				std::getline(tmx, nextline); // <layer ...>
-				std::getline(tmx, nextline); //  <data ...>
-				std::getline(tmx, nextline); //first line of data
-				while (nextline[0] != '<') { //lines of data
-					for (string::iterator i = nextline.begin(); i != nextline.end(); ++i) if (*i != L',') {
-						intmap[0].push_back(int(*i) - 0x30);
-						for (++i; i != nextline.end() && *i != L','; ++i)
-							(intmap[0].back() *= 10) += (int(*i) - 0x30);
-						if (i == nextline.end()) break;
+				std::getline(tmx, nextline); //should be either <layer ...> or </map>
+				while (nextline != L"</map>") { //while we haven't found the end of this map,
+					intmap.push_back(layer(mapwidth * mapheight)); //add another layer
+					layer::iterator l = intmap.back().begin(); //make an iterator to the beginning of this new layer
+					std::getline(tmx, nextline); //should be <data ...>
+					std::getline(tmx, nextline); //should be the first line of actual data
+					while (nextline != L"</data>") { //while we haven't found the end of this data,
+						for (string::iterator s = nextline.begin(); s != nextline.end(); ++s) if (*s != L',') {
+							(*l) = int(*s) - 0x30;
+							for (++s; s != nextline.end() && *s != L','; ++s)
+								((*l) *= 10) += (int(*s) - 0x30);
+							++l;
+							if (s == nextline.end()) break;
+						}
+						std::getline(tmx, nextline); //next line of data, or possibly </data>
 					}
-					std::getline(tmx, nextline);
-				} //</data>
-				std::getline(tmx, nextline); // </layer>
-				std::getline(tmx, nextline); // <layer ...>
-				std::getline(tmx, nextline); //  <data ...>
-				std::getline(tmx, nextline); //first line of data
-				while (nextline[0] != L'<') {
-					for (string::iterator i = nextline.begin(); i != nextline.end(); ++i) if (*i != L',') {
-						intmap[1].push_back(int(*i) - 0x30);
-						for (++i; i != nextline.end() && *i != L','; ++i)
-							(intmap[1].back() *= 10) += (int(*i) - 0x30);
-						if (i == nextline.end()) break;
-					}
-					std::getline(tmx, nextline);
-				} //</data>
-				std::getline(tmx, nextline); // </layer>
-				std::getline(tmx, nextline); //</map>
+					std::getline(tmx, nextline); //should be </layer>
+					std::getline(tmx, nextline); //should be either </map> or <layer ...>
+				}
 			}
 			//parse the .txt (hitbox) file and draw hit map
 			{
@@ -217,14 +212,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 			}
 			//some misc window setup options
 			{
-				SetTimer(hWnd, 0, 20, TIMERPROC(NULL)); //T=20; 60fps would be T=16.66666
-				DeleteMenu(GetMenu(hWnd), 1, MF_BYPOSITION);
+				SetTimer(hWnd, 0, 20, TIMERPROC(NULL)); //T=20, or about 50fps; 60fps would be T=16.66666
+				DeleteMenu(GetMenu(hWnd), 1, MF_BYPOSITION); //remove that pesky "about" section
+				InsertMenu(GetSubMenu(GetMenu(hWnd), 0), 1, MF_BYPOSITION, IDM_SAVE, L"Save	Ctrl+S");
 			}
 		}
 		break;
 	case WM_TIMER:
 		{
-			static int step = 0; ++step;
+			++step;
 			int dx = 0, dy = 0;
 			//decide movement
 			{
@@ -297,8 +293,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             switch (wmId)
             {
             case IDM_EXIT:
-                DestroyWindow(hWnd);
+				{
+					DestroyWindow(hWnd);
+				}
                 break;
+			case IDM_SAVE:
+				{
+					std::wofstream save(L"save");
+					save << int(playerx) << L',' << int(playery);
+					save.close();
+				}
+				break;
             default:
                 return DefWindowProc(hWnd, message, wParam, lParam);
             }
@@ -309,7 +314,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             PAINTSTRUCT ps;
             HDC hdc = BeginPaint(hWnd, &ps);
 			Gdiplus::Graphics g(hdc);
-			g.DrawImage(output, 0, 0);
+			Gdiplus::Rect R{ 0,0,512,512 };
+			g.DrawImage(output, R);
             EndPaint(hWnd, &ps);
         }
         break;
