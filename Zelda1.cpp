@@ -71,6 +71,90 @@ typedef std::vector<int> layer;
 typedef std::vector<layer> map;
 typedef std::unordered_set<int> set;
 typedef std::map<int, Gdiplus::Bitmap*> spritesheet;
+typedef std::vector<Gdiplus::Rect> objectgroup;
+
+class area {
+public:
+	area(wchar_t*); //assumed to be "Overworld.png", 40x36
+	map tiles;
+	layer hit;
+	int mapwidth;
+	int mapheight;
+	set contained;
+	objectgroup zones;
+};
+area::area(wchar_t* filename) {
+	//open file
+	std::wifstream tmx(filename);
+	string nextline;
+	std::getline(tmx, nextline); //<?xml ...>
+	//grab mapsize
+	std::getline(tmx, nextline); //<map ...>
+	mapwidth = (int(nextline[int(nextline.find(L"width")) + 7]) - 0x30);
+	for (int find = int(nextline.find(L"width")) + 8; nextline[find] != L'"'; ++find)
+		(mapwidth *= 10) += (int(nextline[find]) - 0x30);
+	mapheight = (int(nextline[int(nextline.find(L"height")) + 8]) - 0x30);
+	for (int find = int(nextline.find(L"height")) + 9; nextline[find] != L'"'; ++find)
+		(mapheight *= 10) += (int(nextline[find]) - 0x30);
+	//construct 'tiles'
+	std::getline(tmx, nextline); // <tileset .../>
+	std::getline(tmx, nextline); //should be either <layer ...> or </map>
+	while (nextline.find(L"<objectgroup") == string::npos) { //while we haven't found last layer,
+		tiles.push_back(layer(mapwidth * mapheight)); //add another layer
+		layer::iterator l = tiles.back().begin(); //make an iterator to the beginning of this new layer
+		std::getline(tmx, nextline); //should be <data ...>
+		std::getline(tmx, nextline); //should be the first line of actual data
+		while (nextline != L"</data>") { //while we haven't found the end of this data,
+			for (string::iterator s = nextline.begin(); s != nextline.end(); ++s) if (*s != L',') {
+				(*l) = int(*s) - 0x30;
+				for (++s; s != nextline.end() && *s != L','; ++s)
+					((*l) *= 10) += (int(*s) - 0x30);
+				++l;
+				if (s == nextline.end()) break;
+			}
+			std::getline(tmx, nextline); //next line of data, or possibly </data>
+		}
+		std::getline(tmx, nextline); //should be </layer>
+		std::getline(tmx, nextline); //should be either <objectgroup ...> or <layer ...>
+	}
+	//construct 'zones'
+	std::getline(tmx, nextline); //should be first object
+	while (nextline != L" </objectgroup>") {
+		//int id = 0;
+		//for (int find = int(nextline.find(L"id")) + 4; nextline[find] != L'"'; ++find)
+		//	(id *= 10) += (nextline[find] - 0x30);
+		//string name = L"";
+		//for (int find = int(nextline.find(L"name")) + 6; nextline[find] != L'"'; ++find)
+		//	name += nextline[find];
+		int x = 0;
+		for (int find = int(nextline.find(L"x=")) + 3; nextline[find] != L'"'; ++find) {
+			if (nextline[find] == L'-') ++find;
+			(x *= 10) += (nextline[find] = 0x30);
+		}
+		if (nextline[nextline.find(L"x=") + 3] == L'-') x *= -1;
+		int y = 0;
+		for (int find = int(nextline.find(L"y=")) + 3; nextline[find] != L'"'; ++find) {
+			if (nextline[find] == L'-') ++find;
+			(x *= 10) += (nextline[find] = 0x30);
+		}
+		if (nextline[nextline.find(L"y=") + 3] == L'-') y *= -1;
+		int width = 0;
+		for (int find = int(nextline.find(L"width")) + 7; nextline[find] != L'"'; ++find)
+			(width *= 10) += (nextline[find] - 0x30);
+		int height = 0;
+		for (int find = int(nextline.find(L"height")) + 8; nextline[find] != L'"'; ++find)
+			(height *= 10) += (nextline[find] - 0x30);
+		zones.push_back(Gdiplus::Rect{ x, y, width, height });
+		std::getline(tmx, nextline);
+	}
+	tmx.close();
+	//construct 'contained'
+	for (map::iterator m = tiles.begin(); m != tiles.end(); ++m)
+		for (layer::iterator l = m->begin(); l != m->end(); ++l)
+			if ((--(*l)) != -1) if (!contained.count(*l))
+				contained.insert(*l);
+	//construct 'hit'
+}
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
 	static double playerx;
@@ -86,6 +170,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 	static Gdiplus::Bitmap* overworld;
 	static int mapwidth;
 	static int mapheight;
+	static objectgroup zones;
     switch (message)
     {
 	case WM_CREATE:
@@ -123,7 +208,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 			}
 			//parse the tmx file
 			{
-				std::wifstream tmx(L"Map1.tmx");
+				std::wifstream tmx(L"Crossroads.tmx");
 				string nextline;
 				std::getline(tmx, nextline); //<?xml ...>
 				std::getline(tmx, nextline); //<map ...>
@@ -135,7 +220,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 					(mapheight *= 10) += (int(nextline[find]) - 0x30);
 				std::getline(tmx, nextline); // <tileset .../>
 				std::getline(tmx, nextline); //should be either <layer ...> or </map>
-				while (nextline != L"</map>") { //while we haven't found the end of this map,
+				while (nextline.find(L"<objectgroup") == string::npos) { //while we haven't found last layer,
 					intmap.push_back(layer(mapwidth * mapheight)); //add another layer
 					layer::iterator l = intmap.back().begin(); //make an iterator to the beginning of this new layer
 					std::getline(tmx, nextline); //should be <data ...>
@@ -151,12 +236,42 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 						std::getline(tmx, nextline); //next line of data, or possibly </data>
 					}
 					std::getline(tmx, nextline); //should be </layer>
-					std::getline(tmx, nextline); //should be either </map> or <layer ...>
+					std::getline(tmx, nextline); //should be either <objectgroup ...> or <layer ...>
 				}
+				std::getline(tmx, nextline); //should be first object
+				while (nextline != L" </objectgroup>") {
+					//int id = 0;
+					//for (int find = int(nextline.find(L"id")) + 4; nextline[find] != L'"'; ++find)
+					//	(id *= 10) += (nextline[find] - 0x30);
+					//string name = L"";
+					//for (int find = int(nextline.find(L"name")) + 6; nextline[find] != L'"'; ++find)
+					//	name += nextline[find];
+					int x = 0;
+					for (int find = int(nextline.find(L"x=")) + 3; nextline[find] != L'"'; ++find) {
+						if (nextline[find] == L'-') ++find;
+						(x *= 10) += (nextline[find] = 0x30);
+					}
+					if (nextline[nextline.find(L"x=") + 3] == L'-') x *= -1;
+					int y = 0;
+					for (int find = int(nextline.find(L"y=")) + 3; nextline[find] != L'"'; ++find) {
+						if (nextline[find] == L'-') ++find;
+						(x *= 10) += (nextline[find] = 0x30);
+					}
+					if (nextline[nextline.find(L"y=") + 3] == L'-') y *= -1;
+					int width = 0;
+					for (int find = int(nextline.find(L"width")) + 7; nextline[find] != L'"'; ++find)
+						(width *= 10) += (nextline[find] - 0x30);
+					int height = 0;
+					for (int find = int(nextline.find(L"height")) + 8; nextline[find] != L'"'; ++find)
+						(height *= 10) += (nextline[find] - 0x30);
+					zones.push_back(Gdiplus::Rect{ x, y, width, height });
+					std::getline(tmx, nextline);
+				}
+				tmx.close();
 			}
 			//parse the .txt (hitbox) file and draw hit map
 			{
-				std::unordered_set<int> load;
+				set load;
 				for (map::iterator m = intmap.begin(); m != intmap.end(); ++m)
 					for (layer::iterator l = m->begin(); l != m->end(); ++l)
 						if ((--(*l)) != -1) if (!load.count(*l))
@@ -220,6 +335,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 		break;
 	case WM_TIMER:
 		{
+			//switch (wParam);
 			++step;
 			int dx = 0, dy = 0;
 			//decide movement
@@ -233,9 +349,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 					double targetx = playerx + 2.0 * double(dx) * ((dx && dy) ? 0.709 : 1.0);
 					double targety = playery + 2.0 * double(dy) * ((dx && dy) ? 0.709 : 1.0);
 					Gdiplus::Color c;
-					for (int x = 0; x < 8 && movement; ++x) for (int y = 0; y < 8 && movement; ++y)
+					for (int x = 0; x < 8 && movement; ++x) for (int y = 0; y < 8 && movement; ++y) {
+						//first, check for any hitboxes we may be colliding with
 						if (hit[int(targetx) + x - 3 + (int(targety) + y - 3) * mapwidth * 16] == 1)
 							movement = false;
+						//after, check for any zones we may have entered
+						else {
+
+						}
+					}
 					if (movement) {
 						playerx += 2.0 * double(dx) * ((dx && dy) ? 0.709 : 1.0);
 						playery += 2.0 * double(dy) * ((dx && dy) ? 0.709 : 1.0);
