@@ -71,18 +71,20 @@ typedef std::vector<int> layer;
 typedef std::vector<layer> map;
 typedef std::unordered_set<int> set;
 typedef std::map<int, Gdiplus::Bitmap*> spritesheet;
-typedef std::vector<Gdiplus::Rect> objectgroup;
+typedef std::map<string, Gdiplus::Rect> objectgroup;
 
 class area {
+private:
+	set contained;
+	objectgroup zones;
 public:
-	area() {}
-	area(string); //assumed to be "Overworld.png", 40x36
 	map tiles;
 	layer hit;
 	int mapwidth;
 	int mapheight;
-	set contained;
-	objectgroup zones;
+	area() {}
+	area(string); //assumed to be using tileset "Overworld.png", 40x36
+	string ZoneCheck(int, int);
 };
 area::area(string filename) {
 	//open file
@@ -129,9 +131,9 @@ area::area(string filename) {
 			//int id = 0;
 			//for (int find = int(nextline.find(L"id")) + 4; nextline[find] != L'"'; ++find)
 			//	(id *= 10) += (nextline[find] - 0x30);
-			//string name = L"";
-			//for (int find = int(nextline.find(L"name")) + 6; nextline[find] != L'"'; ++find)
-			//	name += nextline[find];
+			string name = string();
+			for (int find = int(nextline.find(L"name")) + 6; nextline[find] != L'"'; ++find)
+				name += nextline[find];
 			int x = 0;
 			for (int find = int(nextline.find(L"x=")) + 3; nextline[find] != L'"'; ++find) {
 				if (nextline[find] == L'-') ++find;
@@ -150,7 +152,7 @@ area::area(string filename) {
 			int height = 0;
 			for (int find = int(nextline.find(L"height")) + 8; nextline[find] != L'"'; ++find)
 				(height *= 10) += (nextline[find] - 0x30);
-			zones.push_back(Gdiplus::Rect{ x, y, width, height });
+			zones[name] = Gdiplus::Rect{ x, y, width, height };
 			std::getline(tmx, nextline);
 		}
 		tmx.close();
@@ -186,6 +188,19 @@ area::area(string filename) {
 									hit[tilex * 16 + x + (tiley * 16 + y) * mapwidth * 16] = 1;
 	}
 }
+string area::ZoneCheck(int x, int y) {
+	for (objectgroup::iterator o = zones.begin(); o != zones.end(); ++o) {
+		if (
+			x >= (*o).second.X &&
+			x < (*o).second.Width &&
+			y >= (*o).second.Y &&
+			y < (*o).second.Height
+			) {
+			return (*o).first;
+		}
+	}
+	return string();
+}
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
 	static double playerx;
@@ -203,7 +218,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
     {
 	case WM_CREATE:
 		{
-			
 			//static variable initializing
 			{
 				Areas = std::map<string, area>();
@@ -237,99 +251,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 				}
 				delete(characterSpritesheet); //done loading sprites => don't need source bitmap anymore
 			}
-		/*
-			//parse the tmx file
-			{
-				std::wifstream tmx(L"Crossroads.tmx");
-				string nextline;
-				std::getline(tmx, nextline); //<?xml ...>
-				std::getline(tmx, nextline); //<map ...>
-				mapwidth = (int(nextline[int(nextline.find(L"width")) + 7]) - 0x30);
-				for (int find = int(nextline.find(L"width")) + 8; nextline[find] != L'"'; ++find)
-					(mapwidth *= 10) += (int(nextline[find]) - 0x30);
-				mapheight = (int(nextline[int(nextline.find(L"height")) + 8]) - 0x30);
-				for (int find = int(nextline.find(L"height")) + 9; nextline[find] != L'"'; ++find)
-					(mapheight *= 10) += (int(nextline[find]) - 0x30);
-				std::getline(tmx, nextline); // <tileset .../>
-				std::getline(tmx, nextline); //should be either <layer ...> or </map>
-				while (nextline.find(L"<objectgroup") == string::npos) { //while we haven't found last layer,
-					intmap.push_back(layer(mapwidth * mapheight)); //add another layer
-					layer::iterator l = intmap.back().begin(); //make an iterator to the beginning of this new layer
-					std::getline(tmx, nextline); //should be <data ...>
-					std::getline(tmx, nextline); //should be the first line of actual data
-					while (nextline != L"</data>") { //while we haven't found the end of this data,
-						for (string::iterator s = nextline.begin(); s != nextline.end(); ++s) if (*s != L',') {
-							(*l) = int(*s) - 0x30;
-							for (++s; s != nextline.end() && *s != L','; ++s)
-								((*l) *= 10) += (int(*s) - 0x30);
-							++l;
-							if (s == nextline.end()) break;
-						}
-						std::getline(tmx, nextline); //next line of data, or possibly </data>
-					}
-					std::getline(tmx, nextline); //should be </layer>
-					std::getline(tmx, nextline); //should be either <objectgroup ...> or <layer ...>
-				}
-				std::getline(tmx, nextline); //should be first object
-				while (nextline != L" </objectgroup>") {
-					//int id = 0;
-					//for (int find = int(nextline.find(L"id")) + 4; nextline[find] != L'"'; ++find)
-					//	(id *= 10) += (nextline[find] - 0x30);
-					//string name = L"";
-					//for (int find = int(nextline.find(L"name")) + 6; nextline[find] != L'"'; ++find)
-					//	name += nextline[find];
-					int x = 0;
-					for (int find = int(nextline.find(L"x=")) + 3; nextline[find] != L'"'; ++find) {
-						if (nextline[find] == L'-') ++find;
-						(x *= 10) += (nextline[find] = 0x30);
-					}
-					if (nextline[nextline.find(L"x=") + 3] == L'-') x *= -1;
-					int y = 0;
-					for (int find = int(nextline.find(L"y=")) + 3; nextline[find] != L'"'; ++find) {
-						if (nextline[find] == L'-') ++find;
-						(x *= 10) += (nextline[find] = 0x30);
-					}
-					if (nextline[nextline.find(L"y=") + 3] == L'-') y *= -1;
-					int width = 0;
-					for (int find = int(nextline.find(L"width")) + 7; nextline[find] != L'"'; ++find)
-						(width *= 10) += (nextline[find] - 0x30);
-					int height = 0;
-					for (int find = int(nextline.find(L"height")) + 8; nextline[find] != L'"'; ++find)
-						(height *= 10) += (nextline[find] - 0x30);
-					zones.push_back(Gdiplus::Rect{ x, y, width, height });
-					std::getline(tmx, nextline);
-				}
-				tmx.close();
-			}
-			//parse the .txt (hitbox) file and draw hit map
-			{
-				set load;
-				for (map::iterator m = intmap.begin(); m != intmap.end(); ++m)
-					for (layer::iterator l = m->begin(); l != m->end(); ++l)
-						if ((--(*l)) != -1) if (!load.count(*l))
-							load.insert(*l);
-				std::wifstream txt(L"OverworldHitboxes.txt");
-				string nextline;
-				std::map<int, layer> hitboxtmp;
-				for (int i = 0; i < 40 * 36; ++i) {
-					std::getline(txt, nextline);
-					if (load.count(i)) {
-						hitboxtmp[i] = layer();
-						for (string::iterator j = nextline.begin(); j != nextline.end(); ++j)
-							hitboxtmp[i].push_back(int(*j) - 0x30);
-					}
-				}
-				hit = layer(mapwidth * 16 * mapheight * 16, 0); //initialize it with map output dimensions
-				for (map::iterator z = intmap.begin(); z != intmap.end(); ++z)
-					for (int tilex = 0; tilex < mapwidth; ++tilex)
-						for (int tiley = 0; tiley < mapheight; ++tiley)
-							if ((*z)[tilex + tiley * mapwidth] != -1)
-								for (int x = 0; x < 16; ++x)
-									for (int y = 0; y < 16; ++y)
-										if (hitboxtmp[(*z)[tilex + tiley * mapwidth]][x + y * 16])
-											hit[tilex * 16 + x + (tiley * 16 + y) * mapwidth * 16] = 1;
-			}
-			*/
 			//load sprites
 			{
 				Gdiplus::Color c;
@@ -388,7 +309,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 							movement = false;
 						//after, check for any zones we may have entered
 						else {
-
+							string s = currentArea->ZoneCheck(playerx, playery);
+							if (s != string()) {
+								//being here means we need to change areas
+							}
 						}
 					}
 					if (movement) {
