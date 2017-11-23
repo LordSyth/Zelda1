@@ -66,6 +66,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow) {
    return TRUE;
 }
 
+enum heart { empty = 0, quarter = 1, half = 2, threequarter = 3, full = 4 };
 typedef std::wstring string;
 typedef std::vector<int> layer;
 typedef std::vector<layer> map;
@@ -214,13 +215,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 	static Gdiplus::Bitmap* overworld;
 	static area* currentArea;
 	static std::map<string, area> Areas;
+	static std::vector<heart> health;
+	static spritesheet hearts;
     switch (message)
     {
 	case WM_CREATE:
 		{
 			//static variable initializing
 			{
-				Areas = std::map<string, area>();
 				Areas[string(L"Crossroads.tmx")] = area(string(L"Crossroads.tmx"));
 				currentArea = &Areas[string(L"Crossroads.tmx")];
 				std::wifstream save(L"save");
@@ -250,6 +252,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 					}
 				}
 				delete(characterSpritesheet); //done loading sprites => don't need source bitmap anymore
+				Gdiplus::Bitmap* objectSpritesheet = Gdiplus::Bitmap::FromFile(L"objects.png"); //load the spritesheet containing the heart sprites
+				for (int tilex = 0; tilex < 4; ++tilex) {
+					hearts[tilex] = new Gdiplus::Bitmap(16, 16);
+					for (int px = 0; px < 16; ++px) for (int py = 0; py < 16; ++py) {
+						objectSpritesheet->GetPixel((8 - tilex) * 16 + px, py, &c);
+						hearts[tilex]->SetPixel(px, py, c);
+					}
+				}
+				delete(objectSpritesheet); //done loading sprites => don't need source bitmap anymore
 			}
 			//load sprites
 			{
